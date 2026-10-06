@@ -1,3 +1,4 @@
+```mermaid
 stateDiagram-v2
     [*] --> INIT
     INIT --> Waiting
@@ -9,3 +10,4 @@ stateDiagram-v2
     Evaluate_Move --> Game_Over: GAME_OVER | [Win State]
     Game_Over --> [*]: Turn Server Off
     Game_Over --> Waiting: Play Again if both clients agree
+```
