@@ -69,12 +69,12 @@
 ## 3. Game Behavior & Server Concurrency Architecture (Sprint 2 Deliverable)
 
 ### 3.1 Server Concurrency Strategy
-- **Architecture Choice:** [Multi-Threading (`threading.Thread`) OR Non-blocking I/O multiplexing (`select.select` / `selectors`)]
-- **Synchronization Logic:** Explain how shared game state and client list are thread-safe (e.g. `threading.Lock`) to prevent race conditions during turn processing.
+- **Architecture Choice:** Non-blocking I/O multiplexing (`select.select` / `selectors`)]
+- **Synchronization Logic:** All actions will be processed sequentially. Due to the turn based nature of Tic Tac Toe, the server only needs to process one move at a time, and any out of turn moves can be discarded.
 
 ### 3.2 State & Score Synchronization Across Clients
-- **Turn Enforcement:** Detail how the server validates active player ID before processing moves and broadcasts updated turn notifications to all clients.
-- **Score & Board Synchronization:** Describe how state broadcasts keep client screens synchronized in real time.
+- **Turn Enforcement:** The connection handler will annotate the messages it passes on to the game loop with the ID of the client that sent it, that way the server can validate turn. Once a turn has been completed, the server will send a message to the other player indicatin that it is now their turn.
+- **Score & Board Synchronization:** The Server will broadcast the full board state to all clients at the end of every turn.
 
 ---
 
