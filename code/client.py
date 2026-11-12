@@ -1,5 +1,6 @@
 
 import socket
+import struct
 
 HOST = "127.0.0.1"
 PORT = 5000
@@ -14,7 +15,9 @@ def connect():
 
 def send_message(message: str):
     """Send a string message to the server."""
-    client.sendall(message.encode("utf-8"))
+    payload = message.encode("utf-8")
+    header = struct.pack("!I", len(payload))
+    client.sendall(header + payload)
 
 
 def disconnect():
