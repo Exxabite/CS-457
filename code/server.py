@@ -1,59 +1,106 @@
 
 import socket
-import threading
+import queue
+import selectors
+import struct
 
 HOST = "0.0.0.0"
 PORT = 5000
+HEADER_SIZE = 4
 
 
-def handle_client(client_socket, address):
-    print(f"[+] Client connected: {address}")
-
+def close_client(selector, clients, client_socket, address):
     try:
-        while True:
-            data = client_socket.recv(1024)
+        selector.unregister(client_socket)
+    except (KeyError, ValueError):
+        pass
 
-            if not data:
-                break
-
-            message = data.decode("utf-8")
-            print(f"[{address}] {message}")
-
-    except ConnectionResetError:
-        print(f"[-] Client disconnected unexpectedly: {address}")
-
-    finally:
-        client_socket.close()
-        print(f"[-] Client disconnected: {address}")
+    clients.discard(client_socket)
+    client_socket.close()
+    print(f"[-] Client disconnected: {address}")
 
 
 def start_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
     server.bind((HOST, PORT))
     server.listen()
+    server.setblocking(False)
 
-    print(f"[*] Server listening on {HOST}:{PORT}")
+    selector = selectors.DefaultSelector()
+    selector.register(server, selectors.EVENT_READ)
+    clients = set()
+    message_queue = queue.Queue()
 
     try:
+        print(f"[*] Server listening on {HOST}:{PORT}")
+
         while True:
-            client_socket, address = server.accept()
+            for key, _ in selector.select():
+                if key.fileobj is server:
+                    while True:
+                        try:
+                            client_socket, address = server.accept()
+                        except BlockingIOError:
+                            break
 
-            # Handle each client in its own thread
-            client_thread = threading.Thread(
-                target=handle_client,
-                args=(client_socket, address),
-                daemon=True
-            )
+                        client_socket.setblocking(False)
+                        clients.add(client_socket)
+                        selector.register(
+                            client_socket,
+                            selectors.EVENT_READ,
+                            (address, bytearray())
+                        )
+                        print(f"[+] Client connected: {address}")
+                    continue
 
-            client_thread.start()
+                client_socket = key.fileobj
+                address, buffer = key.data
+
+                try:
+                    data = client_socket.recv(4096)
+                except ConnectionResetError:
+                    print(f"[-] Client disconnected unexpectedly: {address}")
+                    close_client(selector, clients, client_socket, address)
+                    continue
+
+                if not data:
+                    close_client(selector, clients, client_socket, address)
+                    continue
+
+                buffer.extend(data)
+                while len(buffer) >= HEADER_SIZE:
+                    message_length = struct.unpack("!I", buffer[:HEADER_SIZE])[0]
+                    frame_length = HEADER_SIZE + message_length
+                    if len(buffer) < frame_length:
+                        break
+
+                    message = bytes(buffer[HEADER_SIZE:frame_length])
+                    del buffer[:frame_length]
+                    try:
+                        decoded_message = message.decode("utf-8")
+                    except UnicodeDecodeError:
+                        print(f"[-] Invalid UTF-8 from client: {address}")
+                        close_client(selector, clients, client_socket, address)
+                        break
+
+                    message_queue.put((address, decoded_message))
+
+            while True:
+                try:
+                    address, message = message_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+                print(f"[{address}] {message}")
 
     except KeyboardInterrupt:
         print("\n[*] Shutting down server.")
 
     finally:
+        for client_socket in clients:
+            client_socket.close()
+        selector.close()
         server.close()
 
 
