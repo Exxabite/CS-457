@@ -32,8 +32,8 @@
 
 ### 2.1 Message Transport & Serialization Format
 - **Transport Protocol:** TCP
-- **Serialization Format:** Delimited Text
-- **Framing Mechanism:** Newline-delimited (`\n`)
+- **Serialization Format:** JSON
+- **Framing Mechanism:** JSON
 
 ### 2.2 Message Schema Definitions
 
