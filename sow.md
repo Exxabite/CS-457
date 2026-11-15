@@ -37,6 +37,7 @@
 
 ### 2.2 Message Schema Definitions
 
+## Message Types listed here where for prototyping, protocol_blueprint.md is the authority on message schema
 #### Message Types:
 1. `CONNECT` (Client -> Server): Request to join the game room.
 2. `LOBBY_WAIT` (Server -> Client): Notification that server is waiting for Player 2.
