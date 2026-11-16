@@ -11,6 +11,7 @@ else:
 
 
 def parse_port(value):
+    """Validate a CLI port value and convert it to an integer."""
     try:
         port = int(value)
     except ValueError as error:
@@ -21,6 +22,7 @@ def parse_port(value):
 
 
 def parse_args(argv=None):
+    """Parse the client's required host and port command-line options."""
     parser = argparse.ArgumentParser(description="Play Tic Tac Toe over TCP.")
     parser.add_argument("-i", "--host", required=True, help="server hostname or IPv4 address")
     parser.add_argument("-p", "--port", required=True, type=parse_port)
@@ -28,6 +30,7 @@ def parse_args(argv=None):
 
 
 def connect_to_server(host, port):
+    """Resolve the server address and return a connected TCP socket."""
     address = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)[0][4]
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -39,12 +42,14 @@ def connect_to_server(host, port):
 
 
 def format_board(board):
+    """Format a board as a readable three-row text grid."""
     rows = [" | ".join(cell or " " for cell in row) for row in board]
     return "\n-----------\n".join(rows)
 
 
 class GameClient:
     def __init__(self, client_socket):
+        """Initialize the client socket, synchronization primitives, and game state."""
         self.socket = client_socket
         self.state_lock = threading.Lock()
         self.send_lock = threading.Lock()
@@ -55,11 +60,13 @@ class GameClient:
         self.board = [[None] * 3 for _ in range(3)]
 
     def send(self, message_type, payload):
+        """Encode and send one protocol message to the server."""
         frame = encode_message(message_type, payload)
         with self.send_lock:
             self.socket.sendall(frame)
 
     def receive_messages(self):
+        """Receive, decode, and dispatch complete server messages until stopped."""
         decoder = FrameDecoder()
         try:
             while not self.stop_event.is_set():
@@ -81,6 +88,7 @@ class GameClient:
             self.stop_event.set()
 
     def handle_server_message(self, message):
+        """Dispatch a decoded server message to its type-specific handler."""
         message_type = message["message"]
         payload = message["payload"]
 
@@ -99,6 +107,7 @@ class GameClient:
                 self._handle_game_over(payload)
 
     def _handle_lobby_wait(self, payload):
+        """Update lobby or rematch-waiting state and print the appropriate status."""
         phase = payload.get("phase", "LOBBY")
         with self.state_lock:
             self.phase = "REMATCH" if phase == "REMATCH" else "LOBBY"
@@ -108,6 +117,7 @@ class GameClient:
             print("Waiting for another player to join.")
 
     def _handle_game_start(self, payload):
+        """Set the player's symbol and initial board when a game begins."""
         with self.state_lock:
             self.phase = "PLAYING"
             self.symbol = payload["your_symbol"]
@@ -117,6 +127,7 @@ class GameClient:
         print(format_board(payload["board"]))
 
     def _handle_turn(self, payload):
+        """Update whose turn it is and print the relevant turn status."""
         with self.state_lock:
             self.my_turn = payload["player"] == self.symbol
         if self.my_turn:
@@ -125,18 +136,21 @@ class GameClient:
             print(f"Waiting for {payload['player']} to move.")
 
     def _handle_state_assert(self, payload):
+        """Replace the local board with the server's asserted state and display it."""
         with self.state_lock:
             self.board = payload["board"]
         print("Board updated:")
         print(format_board(payload["board"]))
 
     def _handle_error(self, payload):
+        """Display a server error and update state when a rematch is declined."""
         print(f"Error [{payload['code']}]: {payload['reason']}")
         if payload["code"] == "REMATCH_DECLINED":
             with self.state_lock:
                 self.phase = "GAME_OVER"
 
     def _handle_game_over(self, payload):
+        """Update finished-game state and display the result and rematch prompt."""
         with self.state_lock:
             self.phase = "GAME_OVER"
             self.my_turn = False
@@ -148,6 +162,7 @@ class GameClient:
         print("Enter 'again' to request a rematch, 'no' to decline, or 'quit'.")
 
     def run_input_loop(self):
+        """Run the interactive command loop and cleanly stop the receiver and socket."""
         self.send("CONNECT", {})
         receiver = threading.Thread(target=self.receive_messages, daemon=True)
         receiver.start()
@@ -187,6 +202,7 @@ class GameClient:
             receiver.join(timeout=1)
 
     def _request_rematch(self, accept):
+        """Send a rematch decision if the client is in a finished-game state."""
         with self.state_lock:
             is_game_over = self.phase in ("GAME_OVER", "REMATCH")
         if not is_game_over:
@@ -195,6 +211,7 @@ class GameClient:
         self.send("PLAY_AGAIN", {"accept": accept})
 
     def _submit_move(self, command):
+        """Parse and validate a console move before sending it to the server."""
         parts = command.replace(",", " ").split()
         if len(parts) != 2:
             print("Enter a move as two coordinates, for example: 1 2")
@@ -219,6 +236,7 @@ class GameClient:
 
 
 def main(argv=None):
+    """Parse client options, connect to the server, and run the game client."""
     args = parse_args(argv)
     try:
         client_socket = connect_to_server(args.host, args.port)
