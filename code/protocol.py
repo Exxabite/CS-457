@@ -60,12 +60,14 @@ def validate_message(message):
                 raise ProtocolError("Move coordinates must be integers.")
             if not 0 <= coordinate <= 2:
                 raise ProtocolError("Move coordinates must be between 0 and 2.")
-    if message_type == "PLAY_AGAIN":
-        if set(payload) != {"accept"} or not isinstance(payload["accept"], bool):
-            raise ProtocolError("PLAY_AGAIN requires a boolean accept value.")
-    if message_type == "DISCONNECT":
-        if set(payload) != {"reason"} or not isinstance(payload["reason"], str):
-            raise ProtocolError("DISCONNECT requires a string reason.")
+    if message_type == "PLAY_AGAIN" and (
+        set(payload) != {"accept"} or not isinstance(payload["accept"], bool)
+    ):
+        raise ProtocolError("PLAY_AGAIN requires a boolean accept value.")
+    if message_type == "DISCONNECT" and (
+        set(payload) != {"reason"} or not isinstance(payload["reason"], str)
+    ):
+        raise ProtocolError("DISCONNECT requires a string reason.")
     if message_type == "LOBBY_WAIT":
         required = {"players_waiting", "players_needed"}
         if not required.issubset(payload) or set(payload) - required - {"phase"}:
@@ -81,9 +83,10 @@ def validate_message(message):
             raise ProtocolError("GAME_START your_symbol must be X or O.")
         if payload["starting_player"] != "X" or not _validate_board(payload["board"]):
             raise ProtocolError("GAME_START has an invalid starting state.")
-    if message_type == "TURN":
-        if set(payload) != {"player"} or not _is_symbol(payload["player"]):
-            raise ProtocolError("TURN requires a player symbol.")
+    if message_type == "TURN" and (
+        set(payload) != {"player"} or not _is_symbol(payload["player"])
+    ):
+        raise ProtocolError("TURN requires a player symbol.")
     if message_type == "STATE_ASSERT":
         if set(payload) != {"board", "next_turn"}:
             raise ProtocolError("STATE_ASSERT has an invalid payload.")
