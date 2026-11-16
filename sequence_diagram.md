@@ -7,37 +7,50 @@ sequenceDiagram
 
 
     Client1->>Server: CONNECT
-    Server->>Client1: LOBBY_WAIT
+    Server->>Client1: LOBBY_WAIT (phase LOBBY)
     Client2->>Server: CONNECT
-    Server->>Client2: LOBBY_WAIT
-    Note over Server: Server sees that both players are ready
-    Server->>Client1: GAME_START
-    Server->>Client2: GAME_START
-    Server->>Client1: TURN
-    alt Client sends message when its not the players turn
-        Client2->>Server: STATE_CHANGE
-        Server->>Client2: ERROR (Not your turn)
+    Server->>Client1: GAME_START (X)
+    Server->>Client2: GAME_START (O)
+    Server->>Client1: TURN (X)
+
+    loop Until a win or draw
+        alt Move is out of turn, malformed, or invalid
+            Client2->>Server: STATE_CHANGE
+            Server->>Client2: ERROR
+            Note over Server: Board and active turn do not change
+        else Valid non-terminal move
+            Client1->>Server: STATE_CHANGE
+            Server->>Server: Validate move and update board
+            Server->>Client1: STATE_ASSERT (full board)
+            Server->>Client2: STATE_ASSERT (full board)
+            Server->>Client2: TURN
+        else Valid winning or drawing move
+            Client1->>Server: STATE_CHANGE
+            Server->>Server: Update board and determine result
+            Server->>Client1: STATE_ASSERT (final board)
+            Server->>Client2: STATE_ASSERT (final board)
+            Server->>Client1: GAME_OVER (win or draw)
+            Server->>Client2: GAME_OVER (win or draw)
+        end
     end
-    Client1->>Server: STATE_CHANGE
-    Note over Server: Evaluate Move
-    alt Valid Move
-        Note over Server: Update Board State
-        Server->>Client1: STATE_ASSERT
-        Server->>Client2: STATE_ASSERT
-        Server->>Client2: TURN
-    else Invalid Move
-        Server->>Client1: ERROR (Invalid Move)
+
+    opt Rematch
+        Client1->>Server: PLAY_AGAIN (accept true)
+        Server->>Client1: LOBBY_WAIT (phase REMATCH)
+        alt Both players accept
+            Client2->>Server: PLAY_AGAIN (accept true)
+            Server->>Client1: GAME_START (X)
+            Server->>Client2: GAME_START (O)
+            Server->>Client1: TURN (X)
+        else A player declines
+            Client2->>Server: PLAY_AGAIN (accept false)
+            Server->>Client1: ERROR (REMATCH_DECLINED)
+            Server->>Client2: ERROR (REMATCH_DECLINED)
+        end
     end
-    Note over Server: Game Loops Until Board is Full
-    Server->>Client1: GAME_OVER
-    Server->>Client2: GAME_OVER
-    Note over Server: The Game Over message will tell clients who won
-    alt A player wants to play again
-        Client1->>Server: PLAY_AGAIN
-        Server->>Client1: LOBBY_WAIT
-        #Server->>Client2: LOBBY_WAIT
-        Note over Server: If both players join the lobby the game will start over
-    else A Player Leaves
+
+    opt A player disconnects
         Client1->>Server: DISCONNECT
+        Server->>Client2: LOBBY_WAIT (phase LOBBY)
     end
 ```

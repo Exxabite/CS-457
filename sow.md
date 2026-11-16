@@ -33,49 +33,39 @@
 ### 2.1 Message Transport & Serialization Format
 - **Transport Protocol:** TCP
 - **Serialization Format:** JSON
-- **Framing Mechanism:** JSON
+- **Framing Mechanism:** Each UTF-8 JSON message is prefixed by a 4-byte unsigned big-endian payload length. The maximum JSON payload is 65,536 bytes. Receivers buffer TCP data until complete frames are available.
 
 ### 2.2 Message Schema Definitions
 
-## Message Types listed here where for prototyping, protocol_blueprint.md is the authority on message schema
-#### Message Types:
-1. `CONNECT` (Client -> Server): Request to join the game room.
-2. `LOBBY_WAIT` (Server -> Client): Notification that server is waiting for Player 2.
-3. `GAME_START` (Server -> Clients): Game initiated, assigns roles (e.g. Player X vs Player O).
-4. `MOVE` (Client -> Server): Player action (e.g., cell coordinates or answer choice).
-5. `STATE_UPDATE` (Server -> Clients): Broadcast current game board / state and active player turn.
-6. `GAME_OVER` (Server -> Clients): Victory / Draw notification with final scores.
-7. `ERROR` (Server -> Client): Invalid move or malformed packet error.
+`protocol_blueprint.md` is authoritative for message names and payloads. Every message has a `message` field containing its type and a `payload` object. The supported signals are `CONNECT`, `LOBBY_WAIT`, `GAME_START`, `TURN`, `STATE_CHANGE`, `STATE_ASSERT`, `ERROR`, `DISCONNECT`, `GAME_OVER`, and `PLAY_AGAIN`.
 
 #### Example JSON Protocol Schema:
 ```json
 {
-  "msg_type": "MOVE",
-  "player_id": "Player_1",
+  "message": "STATE_CHANGE",
   "payload": {
     "row": 0,
-    "col": 2
-  },
-  "timestamp": 1727000000
+    "column": 2
+  }
 }
 ```
 
 ---
 
 ### 2.3 Game State Machine (FSM) Design (Sprint 1 Deliverable)
-- **State Transitions:** Detail state flow: `INIT` -> `WAITING_FOR_PLAYERS` -> `PLAYER_TURN` -> `EVALUATE_MOVE` -> `CHECK_WIN_DRAW` -> `GAME_OVER` -> `CLEANUP`.
+- **State Transitions:** See `fsm_specification.md`. The first connected player is X and always moves first. The server validates turns and moves, broadcasts the authoritative board after each accepted move, and reports a win or draw distinctly.
 
 ---
 
 ## 3. Game Behavior & Server Concurrency Architecture (Sprint 2 Deliverable)
 
 ### 3.1 Server Concurrency Strategy
-- **Architecture Choice:** Non-blocking I/O multiplexing (`select.select` / `selectors`)]
-- **Synchronization Logic:** All actions will be processed sequentially. Due to the turn based nature of Tic Tac Toe, the server only needs to process one move at a time, and any out of turn moves can be discarded.
+- **Architecture Choice:** Non-blocking I/O multiplexing with Python `selectors`.
+- **Synchronization Logic:** Socket reads are framed and placed on a single message queue. The server processes game events sequentially, so the authoritative session state is changed by one event at a time. Out-of-turn or invalid moves receive an error and do not mutate the board.
 
 ### 3.2 State & Score Synchronization Across Clients
-- **Turn Enforcement:** The connection handler will annotate the messages it passes on to the game loop with the ID of the client that sent it, that way the server can validate turn. Once a turn has been completed, the server will send a message to the other player indicatin that it is now their turn.
-- **Score & Board Synchronization:** The Server will broadcast the full board state to all clients at the end of every turn.
+- **Turn Enforcement:** The server associates each queued message with its client connection and uses the assigned player slot to validate turns. X always starts.
+- **Score & Board Synchronization:** The server broadcasts the full board after each accepted move and sends `TURN` to the next player when the game continues.
 
 ---
 

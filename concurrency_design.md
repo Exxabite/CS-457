@@ -1,17 +1,10 @@
 ## Concurrency
-For this project I plan on using selectors to handle concurrency.
-The server be able to establish a network connection with an arbitrary amount of clients, but the game logic system will only support two. Once two clients have succesfully connected, the game will start. 
-The server will process all messages sent from either client on a single message queue, than records both the message content, and the client it came from. 
-With this queue the server can run all of the game logic for both players on a single thread.
-By simply reading the next message, checking if that player is allowed to make that move, updating state accordingly and sending the results back it can keep track of all nescicary game state for both players.
-If a player makes a move out of turn, the server will know that the client is sending an out of turn move, and will send back an error without changing any game state, before moving on to the next message in the queue.
-The details of the network connections will be handled by a sepperate part of the server than the game loop.
-Because the game loop can proccess a message from any client at any time, it wont be confused by invalid or out of turn messages.
-The server will only update state if a message describes an action that can legally be taken at a given time, any other requests will be responded to with an error. If the network handeler receives a malformed packet, it will send back an error to the client without sending a message to the game loop.
+For this project I use Python's `selectors` module to handle concurrent TCP connections without a worker thread per client. The server can accept connections, while one game session has exactly two player slots. A third client that sends `CONNECT` while both slots are occupied receives a `BUSY` error.
+
+Each socket has an incremental frame decoder and an output buffer. Complete JSON messages are tagged with their originating connection and placed on one message queue. The selector loop processes that queue sequentially, keeping all game-state changes on one thread. Partial reads and writes are handled without blocking other clients.
+
+The game logic validates the sender, current turn, coordinates, and cell occupancy before changing the board. Invalid or out-of-turn moves receive an error without mutating state. Malformed frames or JSON are rejected before reaching the game logic. The server broadcasts the complete board after each accepted move and sends `TURN` to the next player when the game continues.
 
 
 ## Shared Resources
-Since Tic Tac Toe is turn based, this makes keeping state in sync much easier than it would be for a real time game. The main game data that needs to be kept in sync is the state of the board and who's turn it is.
-To keep this data in sync the server will start by picking and recording which player will go first.
-That player will be sent a TURN message indicating that it is now their turn. 
-Once that player makes a move, the server will verify the move and if it is valid, the server wil update its copy of the board, send the full board state to both clients, flip its internal record of whos turn it is, and send the other player a TURN message.
+The server is authoritative for the board and current turn. The first accepted player is X and always moves first. After validating a move, the server updates its board, sends the full board to both clients, then sends `TURN` to the next player if the game has not ended. On disconnect, the server releases the player's slot, resets the session, and returns the other connected player to the waiting lobby.
