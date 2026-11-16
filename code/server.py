@@ -1,10 +1,10 @@
 """Selector-based TCP server for the two-player Tic Tac Toe game."""
 
 import argparse
-from dataclasses import dataclass, field
 import queue
 import selectors
 import socket
+from dataclasses import dataclass, field
 
 if __package__:
     from .game import GameSession
