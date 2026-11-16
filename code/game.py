@@ -83,25 +83,26 @@ class GameSession:
         self.board[row][column] = symbol
 
         if self._has_won(symbol):
-            self.phase = "GAME_OVER"
-            self.current_turn = None
-            actions = self._broadcast(
-                "STATE_ASSERT",
-                {"board": self._copy_board(), "next_turn": None},
-            )
-            actions.extend(self._broadcast("GAME_OVER", {"result": "WIN", "winner": symbol}))
-            return actions
+            return self._finish_game("WIN", symbol)
 
         if all(cell is not None for board_row in self.board for cell in board_row):
-            self.phase = "GAME_OVER"
-            self.current_turn = None
-            actions = self._broadcast(
-                "STATE_ASSERT",
-                {"board": self._copy_board(), "next_turn": None},
-            )
-            actions.extend(self._broadcast("GAME_OVER", {"result": "DRAW", "winner": None}))
-            return actions
+            return self._finish_game("DRAW", None)
 
+        return self._advance_turn(symbol)
+
+    def _finish_game(self, result, winner):
+        self.phase = "GAME_OVER"
+        self.current_turn = None
+        actions = self._broadcast(
+            "STATE_ASSERT",
+            {"board": self._copy_board(), "next_turn": None},
+        )
+        actions.extend(
+            self._broadcast("GAME_OVER", {"result": result, "winner": winner})
+        )
+        return actions
+
+    def _advance_turn(self, symbol):
         self.current_turn = "O" if symbol == "X" else "X"
         actions = self._broadcast(
             "STATE_ASSERT",
