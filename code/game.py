@@ -12,6 +12,7 @@ class GameAction:
 
 class GameSession:
     def __init__(self):
+        """Initialize an empty game session and its lobby state."""
         self.players = {}
         self.board = self._empty_board()
         self.current_turn = None
@@ -20,9 +21,11 @@ class GameSession:
 
     @staticmethod
     def _empty_board():
+        """Create and return a blank 3-by-3 game board."""
         return [[None for _ in range(3)] for _ in range(3)]
 
     def connect(self, player_id):
+        """Add a player to the session or return the corresponding game actions."""
         if player_id in self.players:
             return [self._error(player_id, "ALREADY_CONNECTED", "This connection already joined.")]
         if len(self.players) >= 2:
@@ -38,6 +41,7 @@ class GameSession:
         return self._start_game()
 
     def handle(self, player_id, message_type, payload):
+        """Route a player's protocol message to the matching game operation."""
         if player_id not in self.players:
             return [self._error(player_id, "NOT_CONNECTED", "Send CONNECT before playing.")]
 
@@ -52,6 +56,7 @@ class GameSession:
         return [self._error(player_id, "INVALID_MESSAGE", "This message is not valid from a client.")]
 
     def disconnect(self, player_id):
+        """Remove a player and return the remaining player's lobby notification."""
         if player_id not in self.players:
             return []
 
@@ -69,6 +74,7 @@ class GameSession:
         return [self._lobby_wait(remaining_player)]
 
     def _move(self, player_id, payload):
+        """Apply a valid move and return actions for errors, completion, or the next turn."""
         if self.phase != "PLAYING":
             return [self._error(player_id, "GAME_NOT_ACTIVE", "The game is not accepting moves.")]
         if self.players[player_id] != self.current_turn:
@@ -91,6 +97,7 @@ class GameSession:
         return self._advance_turn(symbol)
 
     def _finish_game(self, result, winner):
+        """End the current game and broadcast its final board and result."""
         self.phase = "GAME_OVER"
         self.current_turn = None
         actions = self._broadcast(
@@ -103,6 +110,7 @@ class GameSession:
         return actions
 
     def _advance_turn(self, symbol):
+        """Switch to the other symbol and notify players of the updated state and turn."""
         self.current_turn = "O" if symbol == "X" else "X"
         actions = self._broadcast(
             "STATE_ASSERT",
@@ -113,6 +121,7 @@ class GameSession:
         return actions
 
     def _play_again(self, player_id, accept):
+        """Record a rematch vote and restart only when both players accept."""
         if self.phase != "GAME_OVER":
             return [self._error(player_id, "GAME_NOT_OVER", "A rematch can only be requested after a game.")]
 
@@ -136,6 +145,7 @@ class GameSession:
         ]
 
     def _start_game(self):
+        """Reset the board and return game-start and opening-turn actions."""
         self.phase = "PLAYING"
         self.board = self._empty_board()
         self.current_turn = "X"
@@ -161,6 +171,7 @@ class GameSession:
         return actions
 
     def _has_won(self, symbol):
+        """Return whether the given symbol occupies any complete row, column, or diagonal."""
         lines = self.board + [
             [self.board[row][column] for row in range(3)]
             for column in range(3)
@@ -174,21 +185,26 @@ class GameSession:
         return any(all(cell == symbol for cell in line) for line in lines)
 
     def _player_for_symbol(self, symbol):
+        """Find and return the player identifier assigned to a symbol."""
         return next(player_id for player_id, player_symbol in self.players.items()
                     if player_symbol == symbol)
 
     def _copy_board(self):
+        """Return a row-by-row copy of the current board."""
         return [row.copy() for row in self.board]
 
     def _broadcast(self, message, payload):
+        """Create one game action for each connected player."""
         return [GameAction(player_id, message, payload) for player_id in self.players]
 
     @staticmethod
     def _error(player_id, code, reason):
+        """Create an ERROR action for one player."""
         return GameAction(player_id, "ERROR", {"code": code, "reason": reason})
 
     @staticmethod
     def _lobby_wait(player_id):
+        """Create a lobby waiting action for a player."""
         return GameAction(
             player_id,
             "LOBBY_WAIT",
