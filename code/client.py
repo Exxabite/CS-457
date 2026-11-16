@@ -84,49 +84,68 @@ class GameClient:
         message_type = message["message"]
         payload = message["payload"]
 
-        if message_type == "LOBBY_WAIT":
-            phase = payload.get("phase", "LOBBY")
-            with self.state_lock:
-                self.phase = "REMATCH" if phase == "REMATCH" else "LOBBY"
-            if phase == "REMATCH":
-                print("Waiting for the other player to accept a rematch.")
-            else:
-                print("Waiting for another player to join.")
-        elif message_type == "GAME_START":
-            with self.state_lock:
-                self.phase = "PLAYING"
-                self.symbol = payload["your_symbol"]
-                self.board = payload["board"]
-                self.my_turn = False
-            print(f"Game started. You are {self.symbol}; X moves first.")
-            print(format_board(payload["board"]))
-        elif message_type == "TURN":
-            with self.state_lock:
-                self.my_turn = payload["player"] == self.symbol
-            if self.my_turn:
-                print(f"Your turn ({self.symbol}). Enter: row column")
-            else:
-                print(f"Waiting for {payload['player']} to move.")
-        elif message_type == "STATE_ASSERT":
-            with self.state_lock:
-                self.board = payload["board"]
-            print("Board updated:")
-            print(format_board(payload["board"]))
-        elif message_type == "ERROR":
-            print(f"Error [{payload['code']}]: {payload['reason']}")
-            if payload["code"] == "REMATCH_DECLINED":
-                with self.state_lock:
-                    self.phase = "GAME_OVER"
-        elif message_type == "GAME_OVER":
+        match message_type:
+            case "LOBBY_WAIT":
+                self._handle_lobby_wait(payload)
+            case "GAME_START":
+                self._handle_game_start(payload)
+            case "TURN":
+                self._handle_turn(payload)
+            case "STATE_ASSERT":
+                self._handle_state_assert(payload)
+            case "ERROR":
+                self._handle_error(payload)
+            case "GAME_OVER":
+                self._handle_game_over(payload)
+
+    def _handle_lobby_wait(self, payload):
+        phase = payload.get("phase", "LOBBY")
+        with self.state_lock:
+            self.phase = "REMATCH" if phase == "REMATCH" else "LOBBY"
+        if phase == "REMATCH":
+            print("Waiting for the other player to accept a rematch.")
+        else:
+            print("Waiting for another player to join.")
+
+    def _handle_game_start(self, payload):
+        with self.state_lock:
+            self.phase = "PLAYING"
+            self.symbol = payload["your_symbol"]
+            self.board = payload["board"]
+            self.my_turn = False
+        print(f"Game started. You are {self.symbol}; X moves first.")
+        print(format_board(payload["board"]))
+
+    def _handle_turn(self, payload):
+        with self.state_lock:
+            self.my_turn = payload["player"] == self.symbol
+        if self.my_turn:
+            print(f"Your turn ({self.symbol}). Enter: row column")
+        else:
+            print(f"Waiting for {payload['player']} to move.")
+
+    def _handle_state_assert(self, payload):
+        with self.state_lock:
+            self.board = payload["board"]
+        print("Board updated:")
+        print(format_board(payload["board"]))
+
+    def _handle_error(self, payload):
+        print(f"Error [{payload['code']}]: {payload['reason']}")
+        if payload["code"] == "REMATCH_DECLINED":
             with self.state_lock:
                 self.phase = "GAME_OVER"
-                self.my_turn = False
-            if payload["result"] == "DRAW":
-                print("The game is a draw.")
-            else:
-                result = "You win!" if payload["winner"] == self.symbol else "You lose."
-                print(f"Game over. {result} Winner: {payload['winner']}.")
-            print("Enter 'again' to request a rematch, 'no' to decline, or 'quit'.")
+
+    def _handle_game_over(self, payload):
+        with self.state_lock:
+            self.phase = "GAME_OVER"
+            self.my_turn = False
+        if payload["result"] == "DRAW":
+            print("The game is a draw.")
+        else:
+            result = "You win!" if payload["winner"] == self.symbol else "You lose."
+            print(f"Game over. {result} Winner: {payload['winner']}.")
+        print("Enter 'again' to request a rematch, 'no' to decline, or 'quit'.")
 
     def run_input_loop(self):
         self.send("CONNECT", {})
