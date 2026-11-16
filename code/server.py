@@ -19,6 +19,8 @@ MAX_PENDING_OUTPUT = 256 * 1024
 
 @dataclass
 class ClientConnection:
+    """Tracks per-client networking state and buffered outgoing bytes."""
+
     address: tuple
     decoder: FrameDecoder = field(default_factory=FrameDecoder)
     output: bytearray = field(default_factory=bytearray)
@@ -27,6 +29,7 @@ class ClientConnection:
 
 
 def parse_port(value):
+    """Validate a CLI port value and convert it to a legal TCP port number."""
     try:
         port = int(value)
     except ValueError as error:
@@ -37,6 +40,7 @@ def parse_port(value):
 
 
 def parse_args(argv=None):
+    """Build and parse the command-line options for the server process."""
     parser = argparse.ArgumentParser(description="Run the Tic Tac Toe game server.")
     parser.add_argument("-p", "--port", required=True, type=parse_port)
     return parser.parse_args(argv)
@@ -44,6 +48,7 @@ def parse_args(argv=None):
 
 class GameServer:
     def __init__(self, port):
+        """Initialize the selector, socket, game state, and client bookkeeping."""
         self.selector = selectors.DefaultSelector()
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -57,6 +62,7 @@ class GameServer:
         self.selector.register(self.server, selectors.EVENT_READ)
 
     def run(self):
+        """Run the main server loop, accepting sockets and processing queued events."""
         try:
             print(f"[*] Server listening on {HOST}:{self.server.getsockname()[1]}")
             while True:
@@ -72,6 +78,7 @@ class GameServer:
             self.close()
 
     def close(self):
+        """Shut down all active client sockets and clean up selector resources."""
         for client_socket in list(self.clients):
             try:
                 self.selector.unregister(client_socket)
@@ -82,6 +89,7 @@ class GameServer:
         self.server.close()
 
     def _accept_clients(self):
+        """Accept every pending client connection and register it for read events."""
         while True:
             try:
                 client_socket, address = self.server.accept()
@@ -95,6 +103,7 @@ class GameServer:
             print(f"[+] Client connected: {address}")
 
     def _handle_client_event(self, client_socket, mask):
+        """Dispatch a ready socket to the correct read/write handling logic."""
         if client_socket not in self.clients:
             return
         if mask & selectors.EVENT_READ:
@@ -103,6 +112,7 @@ class GameServer:
             self._write_client(client_socket)
 
     def _read_client(self, client_socket):
+        """Read raw bytes from a client, decode any complete frames, and queue messages."""
         state = self.clients.get(client_socket)
         if state is None:
             return
@@ -129,6 +139,7 @@ class GameServer:
             self.message_queue.put(("protocol_error", client_socket, str(error)))
 
     def _write_client(self, client_socket):
+        """Flush any queued output bytes to a connected client and close if needed."""
         state = self.clients.get(client_socket)
         if state is None:
             return
@@ -146,6 +157,7 @@ class GameServer:
             self._update_events(client_socket)
 
     def _process_messages(self):
+        """Handle queued socket events such as game messages, protocol failures, and disconnects."""
         while True:
             try:
                 event, client_socket, content = self.message_queue.get_nowait()
@@ -171,6 +183,7 @@ class GameServer:
                 self._close_connection(client_socket)
 
     def _handle_message(self, client_socket, message):
+        """Route a decoded game message through the session logic, including disconnects."""
         state = self.clients.get(client_socket)
         if state is None:
             return
@@ -190,6 +203,7 @@ class GameServer:
         self._deliver_actions(actions)
 
     def _handle_unjoined_message(self, client_socket, state, message_type):
+        """Enforce CONNECT-before-play and complete the join flow for first-time clients."""
         if message_type != "CONNECT":
             self._queue_message(
                 client_socket,
@@ -211,10 +225,12 @@ class GameServer:
             self._update_events(client_socket)
 
     def _deliver_actions(self, actions):
+        """Send a list of game-generated actions to the appropriate sockets."""
         for action in actions:
             self._queue_message(action.recipient, action.message, action.payload)
 
     def _queue_message(self, client_socket, message_type, payload):
+        """Encode a protocol message and buffer it for write-ready delivery."""
         state = self.clients.get(client_socket)
         if state is None or state.close_after_write:
             return
@@ -233,6 +249,7 @@ class GameServer:
         self._update_events(client_socket)
 
     def _update_events(self, client_socket):
+        """Refresh the selector interests for a socket based on current read/write state."""
         state = self.clients.get(client_socket)
         if state is None:
             return
@@ -252,6 +269,7 @@ class GameServer:
             self._close_connection(client_socket)
 
     def _close_connection(self, client_socket):
+        """Remove a client from the game and close its socket after notifying the session."""
         state = self.clients.pop(client_socket, None)
         if state is None:
             return
@@ -271,10 +289,12 @@ class GameServer:
 
 
 def start_server(port):
+    """Create a server instance for the specified port and start the event loop."""
     GameServer(port).run()
 
 
 def main(argv=None):
+    """Parse CLI arguments and start the server or print a startup error."""
     args = parse_args(argv)
     try:
         start_server(args.port)
